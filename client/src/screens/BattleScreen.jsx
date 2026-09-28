@@ -2,6 +2,7 @@ import { LogOut } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { Board } from '../components/Board';
 import { Captain } from '../components/Captain';
+import { fleetStatus } from '../components/FleetStrip';
 import { ResultScene } from '../components/ResultScene';
 import { cellsFor, loadFleet } from '../game/placement';
 import { useGame } from '../socket/GameProvider';
@@ -34,6 +35,8 @@ export function BattleScreen() {
     if (shotFx.shooterId === left?.id) setLeftShot(shotFx.id);
     else if (shotFx.shooterId === right?.id) setRightShot(shotFx.id);
   }, [shotFx, left?.id, right?.id]);
+  const yourFleet = fleetStatus(room.scenario?.fleet, room.you.sunkSizes);
+  const enemyFleet = fleetStatus(room.scenario?.fleet, room.opponent?.sunkSizes);
   const won = room.status === 'finished' && room.winnerId === room.you.id;
   const lost = room.status === 'finished' && room.winnerId && room.winnerId !== room.you.id;
 
@@ -50,12 +53,10 @@ export function BattleScreen() {
       <header className="scorebar glass">
         <div className={`side ${leftTurn ? 'hot' : ''}`}>
           <strong>{left?.name || 'Rakip'}</strong>
-          <span>Kalan Gemi: {left?.shipsRemaining ?? 0}</span>
         </div>
         <div className="vs">VS</div>
         <div className={`side ${rightTurn ? 'hot' : ''}`}>
           <strong>{right?.name || 'Rakip'}</strong>
-          <span>Kalan Gemi: {right?.shipsRemaining ?? 0}</span>
         </div>
       </header>
 
@@ -78,6 +79,7 @@ export function BattleScreen() {
           subtitle="Gemilerin"
           grid={room.you.board}
           ships={ownShips}
+          fleet={yourFleet}
           active={!yourTurn && room.status === 'battle'}
           fx={shotFx?.board === 'you' ? shotFx : null}
         />
@@ -86,6 +88,7 @@ export function BattleScreen() {
           title="RAKİP TAHTASI"
           subtitle={yourTurn ? 'Ateş etmek için bir kare seç' : 'Rakibin tahtası'}
           grid={room.opponent?.board}
+          fleet={enemyFleet}
           mode={yourTurn && room.opponent?.connected ? 'fire' : 'view'}
           active={yourTurn}
           fx={shotFx?.board === 'enemy' ? shotFx : null}

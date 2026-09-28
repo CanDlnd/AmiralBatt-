@@ -858,21 +858,21 @@ input:focus {
   --stage-h: max(100dvh, calc(100vw * 864 / 1821));
   position: fixed;
   z-index: 1;
-  width: calc(var(--stage-w) * 0.28);
+  width: calc(var(--stage-w) * 0.16);
   pointer-events: none;
   user-select: none;
   filter: drop-shadow(0 14px 10px rgba(0, 0, 0, 0.38));
 }
 
 .captain-left {
-  left: calc((100vw - var(--stage-w)) / 2 + var(--stage-w) * 0.078);
-  top: calc((100dvh - var(--stage-h)) / 2 + var(--stage-h) * 0.545);
+  left: calc((100vw - var(--stage-w)) / 2 + var(--stage-w) * 0.012);
+  top: calc((100dvh - var(--stage-h)) / 2 + var(--stage-h) * 0.68);
   right: auto;
 }
 
 .captain-right {
-  right: calc((100vw - var(--stage-w)) / 2 + var(--stage-w) * 0.078);
-  top: calc((100dvh - var(--stage-h)) / 2 + var(--stage-h) * 0.545);
+  right: calc((100vw - var(--stage-w)) / 2 + var(--stage-w) * 0.012);
+  top: calc((100dvh - var(--stage-h)) / 2 + var(--stage-h) * 0.68);
   left: auto;
 }
 
@@ -954,6 +954,59 @@ input:focus {
 .board-head {
   text-align: center;
   margin-bottom: 8px;
+}
+
+.fleet-strip {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  align-items: flex-end;
+  gap: 6px 10px;
+  margin-top: 8px;
+}
+
+.fleet-ship {
+  display: grid;
+}
+
+.fleet-art {
+  position: relative;
+  display: block;
+  width: calc(var(--size) * 28px);
+  height: 36px;
+  overflow: hidden;
+  filter: drop-shadow(0 2px 2px rgba(0, 0, 0, 0.45));
+}
+
+.fleet-art img {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: calc(100% / var(--aw));
+  height: auto;
+  max-height: calc(100% / var(--ah));
+  aspect-ratio: var(--iw) / var(--ih);
+  transform: translate(-50%, -50%);
+  object-fit: fill;
+  pointer-events: none;
+}
+
+.fleet-ship.is-sunk .fleet-art img {
+  filter: grayscale(0.95) brightness(0.5);
+}
+
+.fleet-ship.is-sunk .fleet-art::after {
+  content: "";
+  position: absolute;
+  left: 4%;
+  right: 4%;
+  top: 46%;
+  height: 2px;
+  border-radius: 2px;
+  background: #ff5d6c;
+  box-shadow: 0 0 6px rgba(255, 80, 90, 0.75);
+  transform: rotate(-11deg);
+  z-index: 2;
 }
 
 .board-head h3 {

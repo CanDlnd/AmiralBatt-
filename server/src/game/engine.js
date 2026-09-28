@@ -181,6 +181,11 @@ export function countRemaining(ships, shots, scenarioId = 'classic') {
   return ships.filter((ship) => !isShipSunk(ship, shots)).length;
 }
 
+export function sunkSizes(ships, shots) {
+  if (!ships) return [];
+  return ships.filter((ship) => isShipSunk(ship, shots)).map((ship) => ship.size);
+}
+
 export function getShotResult(ships, priorShots, row, col, scenarioId = 'classic', layout = null) {
   const scenario = activeScenario(scenarioId, layout);
   if (
@@ -328,5 +333,7 @@ export function buildBoards(game, viewerId) {
     enemyBoard: paintEnemy(game.ships[enemyId], enemyShots, scenario),
     yourRemaining: countRemaining(game.ships[viewerId], yourShots, scenario.id),
     enemyRemaining: countRemaining(game.ships[enemyId], enemyShots, scenario.id),
+    yourSunk: sunkSizes(game.ships[viewerId], yourShots),
+    enemySunk: sunkSizes(game.ships[enemyId], enemyShots),
   };
 }

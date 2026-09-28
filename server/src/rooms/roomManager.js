@@ -73,9 +73,11 @@ export function publicView(room, token) {
         enemyBoard: opponent ? emptyBoard('unknown', scenario.id) : null,
         yourRemaining: scenario.fleet.length,
         enemyRemaining: opponent ? scenario.fleet.length : 0,
+        yourSunk: [],
+        enemySunk: [],
       };
 
-  const pack = (person, board, remaining) => {
+  const pack = (person, board, remaining, sunk) => {
     if (!person) return null;
     return {
       id: person.publicId,
@@ -85,6 +87,7 @@ export function publicView(room, token) {
       connected: person.connected,
       isHost: person.token === room.hostId,
       shipsRemaining: remaining,
+      sunkSizes: sunk || [],
       board,
     };
   };
@@ -98,8 +101,8 @@ export function publicView(room, token) {
     currentTurn: room.battle ? publicIdOf(room, room.battle.currentTurn) : null,
     winnerId: room.battle ? publicIdOf(room, room.battle.winnerId) : null,
     abandonedBy: publicIdOf(room, room.abandonedBy),
-    you: pack(player, boards.yourBoard, boards.yourRemaining),
-    opponent: opponent ? pack(opponent, boards.enemyBoard, boards.enemyRemaining) : null,
+    you: pack(player, boards.yourBoard, boards.yourRemaining, boards.yourSunk),
+    opponent: opponent ? pack(opponent, boards.enemyBoard, boards.enemyRemaining, boards.enemySunk) : null,
   };
 }
 
