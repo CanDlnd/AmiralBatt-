@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
 import { MISS_FRAMES } from '../../game/art';
 
-const FRAME_AT = [0, 380, 780, 1220, 1680];
-const MISS_MS = 2300;
+const FRAME_AT = [0, 100, 200, 310, 430];
+const MISS_MS = 600;
 const IMPACT_FRAME = 2;
 
 const prepared = new Map();

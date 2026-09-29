@@ -1,15 +1,19 @@
 import { Check, RotateCw, Shuffle, Trash2 } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
-import { shipArtStyle, shipSrc } from '../game/art';
+import { shipArtStyle, shipSrc, BUOY_FLEET } from '../game/art';
 import { SHIP_COLORS } from '../game/constants';
 import {
   allPlaced,
   buildPlacementCells,
   canPlace,
+  canPlaceDecoy,
   cellIndex,
   cellsFromGrid,
+  decoyPayload,
   fleetPayload,
+  loadDecoy,
   loadFleet,
+  randomDecoy,
   randomFleet,
   seaRules,
   shipAt,
@@ -45,12 +49,14 @@ export function PlacementScreen() {
   const { room, placeShips, error } = useGame();
   const gridRef = useRef(null);
   const fleetRef = useRef(null);
+  const decoyRef = useRef(null);
   const previewRef = useRef(null);
   const dragRef = useRef(null);
-  const rotateRef = useRef(() => {});
+  const rotateRef = useRef(() => { });
   const scenarioRef = useRef(room.scenario);
   scenarioRef.current = room.scenario;
   const [fleet, setFleet] = useState(() => loadFleet(room.code, room.scenario));
+  const [decoy, setDecoy] = useState(() => loadDecoy(room.code, loadFleet(room.code, room.scenario), room.scenario));
   const [selectedId, setSelectedId] = useState(() => loadFleet(room.code, room.scenario)[0]?.id || 'ship-4-0');
   const [preview, setPreview] = useState(null);
   const [message, setMessage] = useState('');
@@ -58,6 +64,7 @@ export function PlacementScreen() {
   const locked = room.you.shipsConfirmed;
 
   fleetRef.current = fleet;
+  decoyRef.current = decoy;
 
   function updatePreview(next) {
     previewRef.current = next;
@@ -92,21 +99,33 @@ export function PlacementScreen() {
   useEffect(() => {
     if (locked) return undefined;
     sessionStorage.setItem(`ab_fleet_${room.code}`, JSON.stringify(fleet));
+    sessionStorage.setItem(`ab_decoy_${room.code}`, JSON.stringify(decoy));
     return undefined;
-  }, [fleet, locked, room.code]);
+  }, [fleet, decoy, locked, room.code]);
 
   useEffect(() => {
     function onMove(event) {
       const drag = dragRef.current;
       if (!drag || event.pointerId !== drag.pointerId) return;
       if (Math.hypot(event.clientX - drag.startX, event.clientY - drag.startY) > 6) drag.moved = true;
-      const ship = fleetRef.current.find((item) => item.id === drag.shipId);
-      if (!ship) return;
       const cell = pointToCell(event.clientX, event.clientY);
       if (!cell) {
         updatePreview(null);
         return;
       }
+      if (drag.shipId === 'decoy') {
+        updatePreview({
+          shipId: 'decoy',
+          size: 1,
+          orientation: 'h',
+          row: cell.row,
+          col: cell.col,
+          valid: canPlaceDecoy(fleetRef.current, cell.row, cell.col, scenarioRef.current),
+        });
+        return;
+      }
+      const ship = fleetRef.current.find((item) => item.id === drag.shipId);
+      if (!ship) return;
       const anchor =
         ship.orientation === 'h'
           ? { row: cell.row, col: cell.col - drag.grabIndex }
@@ -131,6 +150,20 @@ export function PlacementScreen() {
         setSelectedId(drag.shipId);
         return;
       }
+      if (drag.shipId === 'decoy') {
+        if (!currentPreview) {
+          setDecoy(null);
+          return;
+        }
+        if (!currentPreview.valid) {
+          setMessage('Bu konuma şamandıra yerleştirilemez.');
+          return;
+        }
+        setMessage('');
+        setSelectedId('decoy');
+        setDecoy({ row: currentPreview.row, col: currentPreview.col });
+        return;
+      }
       if (!currentPreview) {
         setFleet((current) =>
           current.map((ship) => (ship.id === drag.shipId ? { ...ship, row: null, col: null } : ship)),
@@ -148,14 +181,27 @@ export function PlacementScreen() {
         current.map((ship) =>
           ship.id === drag.shipId
             ? {
-                ...ship,
-                row: currentPreview.row,
-                col: currentPreview.col,
-                orientation: currentPreview.orientation,
-              }
+              ...ship,
+              row: currentPreview.row,
+              col: currentPreview.col,
+              orientation: currentPreview.orientation,
+            }
             : ship,
         ),
       );
+      setDecoy((current) => (
+        current && shipAt(
+          fleetRef.current.map((ship) => (
+            ship.id === drag.shipId
+              ? { ...ship, row: currentPreview.row, col: currentPreview.col, orientation: currentPreview.orientation }
+              : ship
+          )),
+          current.row,
+          current.col,
+        )
+          ? null
+          : current
+      ));
     }
 
     window.addEventListener('pointermove', onMove);
@@ -193,8 +239,23 @@ export function PlacementScreen() {
     setSelectedId(ship.id);
   }
 
+  function placeDecoy(row, col) {
+    if (locked) return;
+    if (shipAt(fleetRef.current, row, col) || !canPlaceDecoy(fleetRef.current, row, col, room.scenario)) {
+      setMessage('Bu konuma şamandıra yerleştirilemez.');
+      return;
+    }
+    setMessage('');
+    setSelectedId('decoy');
+    setDecoy({ row, col });
+  }
+
   function placeSelected(row, col) {
     if (locked) return;
+    if (selectedId === 'decoy') {
+      placeDecoy(row, col);
+      return;
+    }
     const current = fleetRef.current;
     const occupying = shipAt(current, row, col);
     if (occupying) {
@@ -209,13 +270,16 @@ export function PlacementScreen() {
     }
     setMessage('');
     setSelectedId(ship.id);
-    setFleet((items) => items.map((item) => (item.id === ship.id ? { ...item, row, col } : item)));
+    const next = current.map((item) => (item.id === ship.id ? { ...item, row, col } : item));
+    setFleet(next);
+    setDecoy((marker) => (marker && shipAt(next, marker.row, marker.col) ? null : marker));
   }
 
   function rotate(forceId) {
     if (locked) return;
-    const current = fleetRef.current;
     const id = typeof forceId === 'string' ? forceId : selectedId;
+    if (id === 'decoy') return;
+    const current = fleetRef.current;
     const ship = current.find((item) => item.id === id);
     if (!ship) return;
     const next = rotateTarget(current, ship, room.scenario);
@@ -226,25 +290,45 @@ export function PlacementScreen() {
     }
     setMessage('');
     setFleet((items) => items.map((item) => (item.id === ship.id ? { ...item, ...next } : item)));
+    setDecoy((marker) => {
+      if (!marker) return marker;
+      const moved = fleetRef.current.map((item) => (item.id === ship.id ? { ...item, ...next } : item));
+      return shipAt(moved, marker.row, marker.col) ? null : marker;
+    });
   }
 
   rotateRef.current = rotate;
 
   async function confirm() {
-    if (!allPlaced(fleetRef.current, room.scenario) || sending || locked) return;
+    if (!allPlaced(fleetRef.current, room.scenario) || !decoyRef.current || sending || locked) return;
     setSending(true);
-    const response = await placeShips(fleetPayload(fleetRef.current));
+    const response = await placeShips(fleetPayload(fleetRef.current), decoyPayload(decoyRef.current));
     setSending(false);
     if (!response.ok && !response.silent) {
       setMessage(response.message || 'Bu konuma gemi yerleştirilemez.');
     }
   }
 
+  function buoySprite(marker, id, ghost) {
+    if (!marker || !Number.isInteger(marker.row) || !Number.isInteger(marker.col)) return null;
+    return {
+      id,
+      size: 1,
+      row: marker.row,
+      col: marker.col,
+      orientation: 'h',
+      buoy: true,
+      broken: Boolean(marker.triggered),
+      selected: selectedId === 'decoy' && !ghost,
+      ghost,
+    };
+  }
+
   const placedCount = fleet.filter((ship) => ship.row !== null).length;
   const sprites = fleet
     .filter((ship) => ship.row !== null && ship.id !== preview?.shipId)
     .map((ship) => ({ ...ship, selected: ship.id === selectedId }));
-  if (preview && preview.row < 10 && preview.col < 10 && preview.row > -preview.size && preview.col > -preview.size) {
+  if (preview && preview.row > -preview.size && preview.col > -preview.size && preview.row < seaRules(room.scenario).rows && preview.col < seaRules(room.scenario).cols) {
     sprites.push({
       id: 'preview',
       size: preview.size,
@@ -252,8 +336,11 @@ export function PlacementScreen() {
       col: preview.col,
       orientation: preview.orientation,
       ghost: preview.valid ? 'ok' : 'bad',
+      buoy: preview.shipId === 'decoy',
     });
   }
+  const placedBuoy = preview?.shipId === 'decoy' ? null : buoySprite(decoy, 'decoy');
+  if (placedBuoy) sprites.push(placedBuoy);
   const note = message || error;
   const opponentText = room.opponent?.shipsConfirmed
     ? `${room.opponent.name} hazır.`
@@ -268,21 +355,31 @@ export function PlacementScreen() {
         </header>
         <p className="hint">{opponentText}</p>
         <div className="board-card glass">
-          <SeaGrid cells={cellsFromGrid(room.you.board, room.scenario)} ships={fleet.filter((ship) => ship.row !== null)} mode="view" />
+          <SeaGrid
+            cells={cellsFromGrid(room.you.board, room.scenario)}
+            ships={[
+              ...fleet.filter((ship) => ship.row !== null),
+              ...(buoySprite(room.you.decoy || decoy, 'decoy') ? [buoySprite(room.you.decoy || decoy, 'decoy')] : []),
+            ]}
+            mode="view"
+          />
         </div>
       </section>
     );
   }
 
   return (
-    <section className="placement screen">
+    <section className="placement placement-setup screen">
       <header className="screen-title">
         <p>GEMİLERİNİ DİZ</p>
         <h2>
           {placedCount}/6 yerleştirildi
         </h2>
+        {room.you.score || room.opponent?.score ? (
+          <p className="room-score">Oda skoru {room.you.score || 0} – {room.opponent?.score || 0}</p>
+        ) : null}
       </header>
-      <p className="hint">Gemiyi seç, tahtaya tıkla veya sürükle. Döndür ile yönünü değiştir.</p>
+      <p className="hint">Gemiyi seç, tahtaya tıkla veya sürükle. Blöf şamandırasını boş bir kareye koy.</p>
 
       <div className="dock">
         {fleet.map((ship) => (
@@ -299,6 +396,29 @@ export function PlacementScreen() {
             <span>{ship.name}</span>
           </button>
         ))}
+        <button
+          type="button"
+          className={`dock-ship buoy ${decoy ? 'placed' : ''} ${selectedId === 'decoy' ? 'selected' : ''}`}
+          aria-label="Blöf Şamandırası"
+          onPointerDown={(event) => {
+            if (locked) return;
+            event.preventDefault();
+            dragRef.current = {
+              pointerId: event.pointerId,
+              shipId: 'decoy',
+              grabIndex: 0,
+              startX: event.clientX,
+              startY: event.clientY,
+              moved: false,
+            };
+            setSelectedId('decoy');
+          }}
+        >
+          <span className="dock-art buoy">
+            <img src={BUOY_FLEET} alt="" draggable={false} />
+          </span>
+          <span>Blöf</span>
+        </button>
       </div>
 
       <div className="board-card glass">
@@ -311,6 +431,19 @@ export function PlacementScreen() {
             const occupying = shipAt(fleetRef.current, row, col);
             if (occupying) {
               startDrag(event, occupying, cellIndex(occupying, row, col));
+              return;
+            }
+            if (decoyRef.current && decoyRef.current.row === row && decoyRef.current.col === col) {
+              event.preventDefault();
+              dragRef.current = {
+                pointerId: event.pointerId,
+                shipId: 'decoy',
+                grabIndex: 0,
+                startX: event.clientX,
+                startY: event.clientY,
+                moved: false,
+              };
+              setSelectedId('decoy');
               return;
             }
             placeSelected(row, col);
@@ -328,7 +461,12 @@ export function PlacementScreen() {
         <Button variant="ghost" icon={RotateCw} onClick={() => rotate()}>
           DÖNDÜR
         </Button>
-        <Button variant="ghost" icon={Shuffle} onClick={() => { setFleet(randomFleet(room.scenario)); setMessage(''); }}>
+        <Button variant="ghost" icon={Shuffle} onClick={() => {
+          const next = randomFleet(room.scenario);
+          setFleet(next);
+          setDecoy(randomDecoy(next, room.scenario));
+          setMessage('');
+        }}>
           RASTGELE
         </Button>
         <Button
@@ -336,15 +474,16 @@ export function PlacementScreen() {
           icon={Trash2}
           onClick={() => {
             setFleet((current) => current.map((ship) => ({ ...ship, row: null, col: null })));
+            setDecoy(null);
             setMessage('');
           }}
         >
           TEMİZLE
         </Button>
+        <Button variant="green" icon={Check} disabled={!allPlaced(fleet, room.scenario) || !decoy || sending} onClick={confirm}>
+          HAZIRIM
+        </Button>
       </div>
-      <Button variant="green" icon={Check} disabled={!allPlaced(fleet, room.scenario) || sending} onClick={confirm}>
-        HAZIRIM
-      </Button>
     </section>
   );
 }

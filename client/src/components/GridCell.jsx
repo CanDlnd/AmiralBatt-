@@ -12,7 +12,10 @@ const VISUAL = {
   hit: 'hit',
   miss: 'miss',
   sunk: 'sunk',
+  fogged: 'fogged',
   rock: 'rock',
+  decoy: 'empty',
+  'decoy-hit': 'empty',
   ok: 'empty',
   bad: 'empty',
 };
@@ -31,12 +34,12 @@ function waterLight(row, col, rows = 10, cols = 10) {
 }
 
 export function GridCell({
-  cell, row, col, rows = 10, cols = 10, mode, bursting, burstKey, burstResult, missFrames = MISS_FRAMES, hitFrames = HIT_FRAMES, onCellPointerDown, onCellContextMenu,
+  cell, row, col, rows = 10, cols = 10, mode, bursting, burstKey, burstResult, marked = false, missFrames = MISS_FRAMES, hitFrames = HIT_FRAMES, onCellPointerDown, onCellContextMenu,
 }) {
   const [missDoneId, setMissDoneId] = useState('');
   const [hitDoneId, setHitDoneId] = useState('');
   const visual = VISUAL[cell.kind] || 'empty';
-  const clickable = cell.kind !== 'rock' && (mode === 'place' || (mode === 'fire' && cell.kind === 'unknown'));
+  const clickable = !cell.locked && cell.kind !== 'rock' && (mode === 'place' || (mode === 'fire' && cell.kind === 'unknown'));
   const playMiss = Boolean(
     bursting && burstResult === 'miss' && visual === 'miss' && burstKey && missDoneId !== burstKey,
   );
@@ -54,10 +57,16 @@ export function GridCell({
       type="button"
       data-row={row}
       data-col={col}
-      className={`cell state-${visual}${visual === 'rock' ? ` rock-${(row * 2 + col) % 3}` : ''} ${cell.kind}${cell.selected ? ' selected' : ''}`}
+      className={`cell state-${visual}${visual === 'rock' ? ` rock-${(row * 2 + col) % 3}` : ''} ${cell.kind}${cell.selected ? ' selected' : ''}${marked ? ' last-move' : ''}`}
       style={{ '--light': waterLight(row, col, rows, cols) }}
       disabled={!clickable}
-      aria-label={`${COLS[col]}${row + 1}`}
+      aria-label={
+        cell.kind === 'fogged'
+          ? `${COLS[col]}${row + 1}, sis`
+          : marked
+            ? `${COLS[col]}${row + 1}, son atış`
+            : `${COLS[col]}${row + 1}`
+      }
       onClick={() => {
         if (mode !== 'fire' || !clickable) return;
         onCellPointerDown?.(null, row, col);
@@ -89,6 +98,7 @@ export function GridCell({
           onComplete={() => setHitDoneId(burstKey)}
         />
       ) : null}
+      {marked ? <span className="last-ring" aria-hidden="true" /> : null}
     </button>
   );
 }

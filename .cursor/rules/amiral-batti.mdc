@@ -1,0 +1,29 @@
+---
+description: Amiral Battı oyununun kuralları ve dokunulmayacak kararlar
+alwaysApply: true
+---
+
+# Amiral Battı
+
+Türkçe 1v1 Amiral Battı. İstemci React + Vite (`client`, port 5173). Sunucu Node + Express + Socket.IO (`server`, port 3001). Oda durumu RAM'de; sunucu yeniden başlayınca odalar silinir.
+
+Sunucu otoritedir. Maç bitene kadar rakip tahtasına gemi koordinatı, isim veya yerleşim sızmaz. Batan gemi maç sırasında yalnızca `sunkSizes` (boy listesi) olarak gider. Maç bitince rakibin filosu kendi tahtasında görünür.
+
+Senaryolar: klasik 10×10 filo `[4,3,3,2,2,1]`, koy satır 7–13 ve sütun 6–13 (A–M), açık deniz 12×12 filo `[5,4,3,3,2,2]`. İlk maçta kurucu ateş eder. Rövanşta ilk atış önceki maçın ikincisine geçer. İsabet veya batışta sıra devam eder, ıskada el değişir. Sis, maç başında seçilen 6–11. tur geçişinde bir kez iner ve 4 tur kalır. Sis konumu gemilere bakmadan rastgele seçilir. Sis atışı `fogged` döner ve sırayı devreder; gerçek sonuç sis kalkınca açılır. Sis altındaki isabet son gemiyi de batırırsa maç o atışta biter.
+
+Gemiler birbirine ve çaprazına değemez. Kayaya yaslanabilir. Yerleşimde bir karelik blöf şamandırası boş suya konur; vurulunca isabet sayılır, gemi batmaz, çevreleme olmaz. Rakibe maç bitene kadar şamandıra koordinatı gitmez. Bir gemi batınca etrafındaki boş kareler ıska olur; kaya, başka gemi ve şamandıra ıska olmaz. Bu otomatik ıskalar sırayı değiştirmez.
+
+## Dokunma
+
+- İstemeden commit veya ikinci `npm run dev` açma. PowerShell'de `&&` kullanma.
+- Atış sesi, ıska/isabet efekti zamanlaması ve hücre hover'ı istenmedikçe değiştirilmez.
+- `isle-1.png`, `isle-2.png`, `isle-3.png` (mavi havuzlu çift kaya) hücreyi doldurmaz. `isle-3` kuru kaya ile değiştirilmez. Koy kayalıkları düz gri kareye dönmez.
+- Izgara kareleri `ocean-tile.png` kullanmaz. Renk CSS'tedir: fosforlu camgöbeği değil, koyu gerçek deniz mavisi.
+- Güverteye topçu kaptan figürü konmaz. İsim yanındaki portre orada kalır ve ifadeye göre yumuşak geçer. Telsiz düğmesi sağ üstte sabittir. Telsiz balonu konuşan kaptan portresinin hemen yanında 2.5 saniye durur; karelerin üstünü kapatmaz. Sis katmanı yalnızca ızgaradadır.
+- Filo şeridi tahtanın üstündedir. "Kalan Gemi" yazısına geri dönülmez. Batık gemi solar ve kırmızı çizgi alır.
+- Yerleştirme ekranı masaüstünde tek bakışta sığar, sayfa kaymaz. HAZIRIM; Döndür, Rastgele ve Temizle ile aynı şerittedir.
+- Bitiş metinleri sabit: kazanma "KAZANDIN" / "Düşman filosu sulara gömüldü.", kaybetme "KAYBETTİN" / "Filon sulara gömüldü." Rövanş iki onayla yerleşime döner; soket kopmaz. Oda skoru kazananla artar ve oyuncuda kalır. Maç bitince her iki oyuncu da aynı oyun arka planında kalır; kazanma ve kaybetme görselleri kullanılmaz. Kazanan konfeti patlaması görür. İsim yanındaki portre bitişte kazanan için win, kaybeden için defeat ifadesinde kalır. Bitiş kartı skorun hemen altında, tahtaların üstündedir; karelerin üstünü kapatmaz.
+
+## Çalıştırma
+
+Geliştirme `npm run dev`. Vite `/socket.io` isteğini `127.0.0.1:3001` adresine iletir. Tünel 5173'e bakar, 3001'e değil. `server.allowedHosts` içinde `.trycloudflare.com` kalır. Tünel penceresi kapanınca adres ölür; her açılışta yeni link gelir.

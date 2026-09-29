@@ -62,6 +62,34 @@ function publicIdOf(room, token) {
   return room.players.get(token)?.publicId ?? null;
 }
 
+function publicFog(battle) {
+  if (!battle?.fog?.active || !Array.isArray(battle.fog.cells)) return null;
+  return {
+    cells: battle.fog.cells.map((cell) => ({ row: cell.row, col: cell.col })),
+    turns: battle.fog.remaining,
+  };
+}
+
+function publicFogClear(room, weather) {
+  return {
+    sequence: (weather.sequence || []).map((item) => ({
+      row: item.row,
+      col: item.col,
+      result: item.result === 'miss' ? 'miss' : 'hit',
+      shooterId: publicIdOf(room, item.shooterId),
+      ...(item.panic ? { panic: true } : {}),
+      ...(item.sunk ? { sunk: true } : {}),
+      ...(item.echo ? { echo: true } : {}),
+    })),
+    revealedHits: (weather.revealedHits || []).map((cell) => ({ row: cell.row, col: cell.col })),
+    revealedMisses: (weather.revealedMisses || []).map((cell) => ({ row: cell.row, col: cell.col })),
+    sunkSizes: (weather.sunk || []).map((item) => ({
+      playerId: publicIdOf(room, item.playerId),
+      sizes: Array.isArray(item.sizes) ? item.sizes.filter((size) => Number.isInteger(size)) : [],
+    })),
+  };
+}
+
 export function publicView(room, token) {
   const player = room.players.get(token);
   const opponent = otherPlayer(room, token);
@@ -77,7 +105,7 @@ export function publicView(room, token) {
         enemySunk: [],
       };
 
-  const pack = (person, board, remaining, sunk) => {
+  const pack = (person, board, remaining, sunk, revealed = null, decoy = null) => {
     if (!person) return null;
     return {
       id: person.publicId,
@@ -88,7 +116,11 @@ export function publicView(room, token) {
       isHost: person.token === room.hostId,
       shipsRemaining: remaining,
       sunkSizes: sunk || [],
+      score: room.scores?.[person.token] || 0,
+      rematch: Boolean(room.rematch?.[person.token]),
       board,
+      ...(revealed ? { revealed } : {}),
+      ...(decoy ? { decoy } : {}),
     };
   };
 
@@ -100,9 +132,12 @@ export function publicView(room, token) {
     hostId: publicIdOf(room, room.hostId),
     currentTurn: room.battle ? publicIdOf(room, room.battle.currentTurn) : null,
     winnerId: room.battle ? publicIdOf(room, room.battle.winnerId) : null,
+    fog: publicFog(room.battle),
     abandonedBy: publicIdOf(room, room.abandonedBy),
-    you: pack(player, boards.yourBoard, boards.yourRemaining, boards.yourSunk),
-    opponent: opponent ? pack(opponent, boards.enemyBoard, boards.enemyRemaining, boards.enemySunk) : null,
+    you: pack(player, boards.yourBoard, boards.yourRemaining, boards.yourSunk, null, boards.yourDecoy),
+    opponent: opponent
+      ? pack(opponent, boards.enemyBoard, boards.enemyRemaining, boards.enemySunk, boards.enemyReveal, boards.enemyDecoy)
+      : null,
   };
 }
 
@@ -181,6 +216,8 @@ export function createRoom(io, socket, name) {
     scenarioId: 'classic',
     layout: null,
     players: new Map([[player.token, player]]),
+    scores: { [player.token]: 0 },
+    rematch: {},
     battle: null,
     abandonedBy: null,
   };
@@ -199,6 +236,7 @@ export function joinRoom(io, socket, code, name) {
 
   const player = createPlayer(socket, name);
   room.players.set(player.token, player);
+  room.scores[player.token] = 0;
   bindSocket(socket, room, player);
   io.to(room.code).emit('player_joined', { playerId: player.publicId, name: player.name });
   emitRoom(io, room);
@@ -279,13 +317,13 @@ export function startGame(io, socket) {
   emitRoom(io, room);
 }
 
-export function submitShips(io, socket, ships) {
+export function submitShips(io, socket, ships, decoy) {
   const { room, player } = requirePlayer(socket);
   if (room.status !== 'placing' || !room.battle) {
     throw new GameError('Gemi yerleştirme kapalı.');
   }
 
-  const result = placeShips(room.battle, player.token, ships);
+  const result = placeShips(room.battle, player.token, ships, decoy);
   if (!result.ok) throw new GameError(result.message);
 
   io.to(room.code).emit('ships_confirmed', { playerId: player.publicId });
@@ -308,7 +346,10 @@ export function shoot(io, socket, row, col) {
   const result = fireShot(room.battle, player.token, row, col);
   if (!result.ok) throw new GameError(result.message);
 
-  if (room.battle.phase === 'finished') room.status = 'finished';
+  if (room.battle.phase === 'finished') {
+    room.status = 'finished';
+    awardWinner(room);
+  }
 
   const payload = {
     shooterId: player.publicId,
@@ -316,11 +357,20 @@ export function shoot(io, socket, row, col) {
     col: result.col,
     result: result.result,
     cells: result.cells,
+    ...(result.panic ? { panic: true } : {}),
     currentTurn: publicIdOf(room, result.currentTurn),
     winnerId: publicIdOf(room, result.winnerId),
   };
 
   io.to(room.code).emit('shot_result', payload);
+  if (result.weather?.type === 'start') {
+    io.to(room.code).emit('weather:fogStart', {
+      cells: result.weather.cells.map((cell) => ({ row: cell.row, col: cell.col })),
+      turns: result.weather.turns,
+    });
+  } else if (result.weather?.type === 'clear') {
+    io.to(room.code).emit('weather:fogClear', publicFogClear(room, result.weather));
+  }
   if (!result.gameOver && result.currentTurn !== turnBefore) {
     io.to(room.code).emit('turn_changed', { currentTurn: payload.currentTurn });
   } else if (result.gameOver) {
@@ -330,19 +380,59 @@ export function shoot(io, socket, row, col) {
   return payload;
 }
 
-export function restartGame(io, socket) {
+function awardWinner(room) {
+  const winner = room.battle?.winnerId;
+  if (!winner || room.battle.scored) return;
+  room.scores[winner] = (room.scores[winner] || 0) + 1;
+  room.battle.scored = true;
+}
+
+export function requestRematch(io, socket) {
   const { room, player } = requirePlayer(socket);
-  if (room.status !== 'finished') throw new GameError('Oyun bitmeden yeniden başlanamaz.');
-  if ([...room.players.values()].some((item) => !item.connected)) {
-    throw new GameError('Rakip bağlı değil.');
+  if (room.status !== 'finished' || !room.battle) throw new GameError('Oyun bitmeden rövanş istenemez.');
+
+  const opponent = otherPlayer(room, player.token);
+  if (!opponent?.connected) throw new GameError('Rakip bağlı değil.');
+
+  room.rematch[player.token] = true;
+  if (!room.rematch[opponent.token]) {
+    emitRoom(io, room);
+    return { waiting: true };
   }
 
-  room.status = 'lobby';
-  room.battle = null;
+  const previousSecond = room.battle.ids[1];
+  const previousFirst = room.battle.ids[0];
+  room.round = (room.round || 1) + 1;
+  room.battle = createGame(previousSecond, previousFirst, room.scenarioId, room.layout);
+  room.status = 'placing';
   room.abandonedBy = null;
+  room.rematch = {};
   for (const item of room.players.values()) item.ready = false;
   io.to(room.code).emit('restart_game', { by: player.publicId });
   emitRoom(io, room);
+  return { waiting: false };
+}
+
+const RADIO_KEYS = new Set(['nice', 'miss', 'watch', 'lucky']);
+const RADIO_GAP_MS = 3000;
+
+export function sendQuickChat(io, socket, key) {
+  const { room, player } = requirePlayer(socket);
+  if (room.status !== 'battle') throw new GameError('Telsiz şu an kapalı.');
+  if (!RADIO_KEYS.has(key)) throw new GameError('Böyle bir telsiz mesajı yok.');
+
+  const opponent = otherPlayer(room, player.token);
+  if (!opponent?.connected || !opponent.socketId) throw new GameError('Rakip bağlı değil.');
+
+  const now = Date.now();
+  if (player.radioAt && now - player.radioAt < RADIO_GAP_MS) {
+    throw new GameError('Telsiz birazdan açılır.');
+  }
+  player.radioAt = now;
+
+  const sock = io.sockets.sockets.get(opponent.socketId);
+  sock?.emit('quickChat', { from: player.publicId, key });
+  return { sent: true };
 }
 
 export function leaveRoom(io, socket) {

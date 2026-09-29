@@ -6,7 +6,8 @@ import {
   joinRoom,
   leaveRoom,
   reconnectPlayer,
-  restartGame,
+  requestRematch,
+  sendQuickChat,
   setReady,
   setScenario,
   shoot,
@@ -86,7 +87,10 @@ export function registerHandlers(io, socket) {
   on(socket, 'place_ships', (payload) => {
     const body = asObject(payload);
     if (!Array.isArray(body.ships)) throw new GameError('Geçersiz gemi yerleşimi.');
-    return submitShips(io, socket, body.ships);
+    if (!body.decoy || typeof body.decoy !== 'object' || Array.isArray(body.decoy)) {
+      throw new GameError('Şamandıranı yerleştir.');
+    }
+    return submitShips(io, socket, body.ships, { row: body.decoy.row, col: body.decoy.col });
   });
 
   on(socket, 'fire', (payload) => {
@@ -94,9 +98,15 @@ export function registerHandlers(io, socket) {
     return shoot(io, socket, body.row, body.col);
   });
 
-  on(socket, 'restart_game', (payload) => {
+  on(socket, 'rematch', (payload) => {
     asObject(payload);
-    restartGame(io, socket);
+    return requestRematch(io, socket);
+  });
+
+  on(socket, 'quickChat:send', (payload) => {
+    const body = asObject(payload);
+    if (typeof body.key !== 'string') throw new GameError('Böyle bir telsiz mesajı yok.');
+    return sendQuickChat(io, socket, body.key);
   });
 
   on(socket, 'leave_room', (payload) => {

@@ -1,9 +1,27 @@
 import { forwardRef, Fragment } from 'react';
-import { shipArtStyle, shipSrc } from '../game/art';
+import { shipArtStyle, shipSrc, BUOY_FLEET } from '../game/art';
 import { COLS } from '../game/constants';
 import { GridCell } from './GridCell';
 import { useMissFrames } from './effects/MissEffect';
 import { useHitFrames } from './effects/HitEffect';
+
+function FogLayer({ patches }) {
+  if (!patches?.length) return null;
+  return (
+    <div className="fog-layer" aria-hidden="true">
+      {patches.map((patch) => (
+        <span
+          key={`${patch.row}-${patch.col}`}
+          className={`fog-patch${patch.leaving ? ' is-out' : ''}${patch.pin ? ' has-pin' : ''}`}
+          style={{ '--row': patch.row, '--col': patch.col, '--fog-delay': `${(patch.row + patch.col) * 0.28}s` }}
+        >
+          {patch.splash ? <i key={patch.splashId} className="fog-splash" /> : null}
+          {patch.pin ? <i className="fog-pin">?</i> : null}
+        </span>
+      ))}
+    </div>
+  );
+}
 
 function ShipLayer({ ships }) {
   if (!ships?.length) return null;
@@ -12,10 +30,11 @@ function ShipLayer({ ships }) {
       {ships.map((ship) => (
         <span
           key={ship.id}
-          className={`ship-sprite ${ship.orientation}${ship.selected ? ' selected' : ''}${ship.sunk ? ' sunk' : ''}${ship.ghost ? ` ghost ${ship.ghost}` : ''}`}
+          className={`ship-sprite ${ship.orientation}${ship.selected ? ' selected' : ''}${ship.sunk ? ' sunk' : ''}${ship.ghost ? ` ghost ${ship.ghost}` : ''}${ship.buoy ? ' buoy' : ''}${ship.reveal ? ' reveal' : ''}${ship.broken ? ' broken' : ''}`}
           style={{ '--row': ship.row, '--col': ship.col, '--size': ship.size }}
+          title={ship.buoy ? 'Blöf Noktası' : undefined}
         >
-          <img src={shipSrc(ship.size)} alt="" draggable={false} style={shipArtStyle(ship.size)} />
+          <img src={ship.buoy ? BUOY_FLEET : shipSrc(ship.size)} alt="" draggable={false} style={ship.buoy ? undefined : shipArtStyle(ship.size)} />
         </span>
       ))}
     </div>
@@ -23,7 +42,7 @@ function ShipLayer({ ships }) {
 }
 
 export const SeaGrid = forwardRef(function SeaGrid(
-  { cells, ships = null, mode = 'view', fx = null, onCellPointerDown, onCellContextMenu },
+  { cells, ships = null, patches = null, mode = 'view', fx = null, lastMove = null, axisHover = false, onCellPointerDown, onCellContextMenu },
   ref,
 ) {
   const missFrames = useMissFrames();
@@ -37,19 +56,19 @@ export const SeaGrid = forwardRef(function SeaGrid(
 
   return (
     <div
-      className={`sea${wide ? ' wide' : ''}${vast ? ' vast' : ''} ${live ? 'is-live' : ''} mode-${mode}${ships?.length ? ' has-ships' : ''}`}
+      className={`sea${wide ? ' wide' : ''}${vast ? ' vast' : ''} ${live ? 'is-live' : ''} mode-${mode}${axisHover ? ' axis-live' : ''}${ships?.length ? ' has-ships' : ''}`}
       style={{ '--cols': colCount, '--rows': rowCount }}
       ref={ref}
     >
       <div className="sea-label" />
-      {labels.map((col) => (
-        <div key={col} className="sea-label">
+      {labels.map((col, index) => (
+        <div key={col} className="sea-label" data-col={index}>
           {col}
         </div>
       ))}
       {cells.map((row, rowIndex) => (
         <Fragment key={rowIndex}>
-          <div className="sea-label">{rowIndex + 1}</div>
+          <div className="sea-label" data-row={rowIndex}>{rowIndex + 1}</div>
           {row.map((cell, colIndex) => (
             <GridCell
               key={`${rowIndex}-${colIndex}`}
@@ -60,6 +79,7 @@ export const SeaGrid = forwardRef(function SeaGrid(
               bursting={fx?.cells?.some((item) => item.row === rowIndex && item.col === colIndex)}
               burstKey={fx?.id}
               burstResult={fx?.result}
+              marked={lastMove?.row === rowIndex && lastMove?.col === colIndex}
               missFrames={missFrames}
               hitFrames={hitFrames}
               rows={rowCount}
@@ -71,6 +91,7 @@ export const SeaGrid = forwardRef(function SeaGrid(
         </Fragment>
       ))}
       <ShipLayer ships={ships} />
+      <FogLayer patches={patches} />
     </div>
   );
 });

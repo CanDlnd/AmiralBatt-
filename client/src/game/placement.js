@@ -47,7 +47,16 @@ export function canPlace(fleet, shipId, row, col, orientation, scenario) {
       occupied.add(`${cell.row},${cell.col}`);
     }
   }
-  return cells.every((cell) => !occupied.has(`${cell.row},${cell.col}`));
+  return cells.every((cell) => !touchesShip(occupied, cell.row, cell.col));
+}
+
+function touchesShip(occupied, row, col) {
+  for (let dRow = -1; dRow <= 1; dRow += 1) {
+    for (let dCol = -1; dCol <= 1; dCol += 1) {
+      if (occupied.has(`${row + dRow},${col + dCol}`)) return true;
+    }
+  }
+  return false;
 }
 
 export function allPlaced(fleet, scenario) {
@@ -67,6 +76,39 @@ export function shipAt(fleet, row, col) {
 
 export function cellIndex(ship, row, col) {
   return ship.orientation === 'h' ? col - ship.col : row - ship.row;
+}
+
+export function canPlaceDecoy(fleet, row, col, scenario) {
+  const rules = seaRules(scenario);
+  if (!Number.isInteger(row) || !Number.isInteger(col) || !inSea(rules, row, col)) return false;
+  return !shipAt(fleet, row, col);
+}
+
+export function randomDecoy(fleet, scenario) {
+  const rules = seaRules(scenario);
+  const open = [];
+  for (let row = 0; row < rules.rows; row += 1) {
+    for (let col = 0; col < rules.cols; col += 1) {
+      if (canPlaceDecoy(fleet, row, col, scenario)) open.push({ row, col });
+    }
+  }
+  if (!open.length) return null;
+  return open[Math.floor(Math.random() * open.length)];
+}
+
+export function loadDecoy(code, fleet, scenario) {
+  try {
+    const raw = JSON.parse(sessionStorage.getItem(`ab_decoy_${code}`) || 'null');
+    if (!raw || !Number.isInteger(raw.row) || !Number.isInteger(raw.col)) return null;
+    return canPlaceDecoy(fleet, raw.row, raw.col, scenario) ? { row: raw.row, col: raw.col } : null;
+  } catch {
+    return null;
+  }
+}
+
+export function decoyPayload(decoy) {
+  if (!decoy) return null;
+  return { row: decoy.row, col: decoy.col };
 }
 
 export function fleetPayload(fleet) {
@@ -124,7 +166,7 @@ export function buildPlacementCells(fleet, preview, selectedId, scenario) {
 
 export function randomFleet(scenario) {
   const rules = seaRules(scenario);
-  for (let attempt = 0; attempt < 60; attempt += 1) {
+  for (let attempt = 0; attempt < 120; attempt += 1) {
     const fleet = freshFleet(scenario);
     let ok = true;
     for (const ship of fleet) {

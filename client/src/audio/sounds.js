@@ -119,6 +119,27 @@ const synth = {
   defeat() {
     [392, 330, 220].forEach((freq, index) => tone(freq, 0.2, 'sine', 0.05, index * 0.14));
   },
+  fog() {
+    const context = audio();
+    const osc = context.createOscillator();
+    const filter = context.createBiquadFilter();
+    const amp = context.createGain();
+    const now = context.currentTime;
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(168, now);
+    osc.frequency.exponentialRampToValueAtTime(64, now + 0.32);
+    filter.type = 'lowpass';
+    filter.frequency.setValueAtTime(220, now);
+    amp.gain.setValueAtTime(0.0001, now);
+    amp.gain.exponentialRampToValueAtTime(0.05, now + 0.03);
+    amp.gain.exponentialRampToValueAtTime(0.0001, now + 0.4);
+    osc.connect(filter);
+    filter.connect(amp);
+    amp.connect(context.destination);
+    osc.start(now);
+    osc.stop(now + 0.42);
+    tone(92, 0.18, 'triangle', 0.028, 0.04);
+  },
 };
 
 export const sfx = {

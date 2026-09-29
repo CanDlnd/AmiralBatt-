@@ -90,11 +90,20 @@ function buildCoast(rows, cols) {
   return blocked;
 }
 
+function touchesFleet(ships, row, col) {
+  for (let dRow = -1; dRow <= 1; dRow += 1) {
+    for (let dCol = -1; dCol <= 1; dCol += 1) {
+      if (ships.has(`${row + dRow}:${col + dCol}`)) return true;
+    }
+  }
+  return false;
+}
+
 function fleetFits(rows, cols, blocked) {
   const rocks = new Set(blocked.map(([row, col]) => `${row}:${col}`));
   const sizes = [4, 3, 3, 2, 2, 1];
   for (let attempt = 0; attempt < 60; attempt += 1) {
-    const occupied = new Set(rocks);
+    const ships = new Set();
     let ok = true;
     for (const size of sizes) {
       let placed = false;
@@ -111,11 +120,11 @@ function fleetFits(rows, cols, blocked) {
           const cellRow = orientation === 'h' ? row : row + index;
           const cellCol = orientation === 'h' ? col + index : col;
           const key = `${cellRow}:${cellCol}`;
-          if (occupied.has(key)) hit = true;
+          if (rocks.has(key) || touchesFleet(ships, cellRow, cellCol)) hit = true;
           cells.push(key);
         }
         if (hit) continue;
-        for (const key of cells) occupied.add(key);
+        for (const key of cells) ships.add(key);
         placed = true;
       }
       if (!placed) {
@@ -148,7 +157,9 @@ export function pickCoveLayout(current) {
     if (previous && coastKey(layout) === coastKey(previous)) continue;
     return layout;
   }
-  return safeCove(randomInt(COVE_MIN_ROWS, COVE_MAX_ROWS + 1), randomInt(COVE_MIN_COLS, COVE_MAX_COLS + 1));
+  const fallback = safeCove(10, 10);
+  if (fleetFits(fallback.rows, fallback.cols, fallback.blocked)) return fallback;
+  return { rows: 10, cols: 10, blocked: [] };
 }
 
 const SCENARIOS = [

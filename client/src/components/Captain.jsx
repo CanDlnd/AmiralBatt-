@@ -1,20 +1,20 @@
-import { useEffect, useState } from 'react';
-import { CAPTAIN_FIRE, CAPTAIN_IDLE } from '../game/art';
+import { CAPTAIN_MOODS } from '../game/art';
 
-export function Captain({ mirrored = false, shotId = '', className = '' }) {
-  const [blast, setBlast] = useState(false);
+const MOODS = ['idle', 'sink', 'rage', 'panic', 'defeat', 'win'];
 
-  useEffect(() => {
-    if (!shotId) return undefined;
-    setBlast(true);
-    const timer = setTimeout(() => setBlast(false), 720);
-    return () => clearTimeout(timer);
-  }, [shotId]);
-
+export function CaptainPortrait({ mood = 'idle' }) {
+  const active = MOODS.includes(mood) ? mood : 'idle';
   return (
-    <div className={`captain ${mirrored ? 'mirror' : ''} ${blast ? 'firing' : ''} ${className}`.trim()} aria-hidden="true">
-      <img className="captain-idle" src={CAPTAIN_IDLE} alt="" draggable={false} />
-      <img className="captain-fire" src={CAPTAIN_FIRE} alt="" draggable={false} />
+    <div className="captain-portrait" aria-hidden="true">
+      {MOODS.map((name) => (
+        <img
+          key={name}
+          className={name === active ? 'is-on' : ''}
+          src={CAPTAIN_MOODS[name]}
+          alt=""
+          draggable={false}
+        />
+      ))}
     </div>
   );
 }

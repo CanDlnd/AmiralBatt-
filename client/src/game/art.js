@@ -6,8 +6,17 @@ export const OCEAN_TILE = '/images/grid/ocean-tile.png';
 export const MENU_BACKGROUND = '/images/menu-background.png';
 export const GAME_BACKGROUND = '/images/game-background.png';
 export const LOGO = '/images/logo.png';
-export const CAPTAIN_IDLE = '/images/captan-man/captan-man-fire-animate1.png';
-export const CAPTAIN_FIRE = '/images/captan-man/captan-man-fire-animate2.png';
+export const BUOY_FLEET = '/images/ships/buoy-fleet.png';
+
+const CAPTAIN_MOOD_DIR = '/expression%20captain';
+export const CAPTAIN_MOODS = {
+  idle: `${CAPTAIN_MOOD_DIR}/captain-idle.png`,
+  sink: `${CAPTAIN_MOOD_DIR}/captain-sink.png`,
+  rage: `${CAPTAIN_MOOD_DIR}/captain-rage.png`,
+  panic: `${CAPTAIN_MOOD_DIR}/captain-panic.png`,
+  defeat: `${CAPTAIN_MOOD_DIR}/captain-defeat.png`,
+  win: `${CAPTAIN_MOOD_DIR}/captan-winner.png`,
+};
 
 const FRAMES = {
   1: { w: 1536, h: 1024, aw: 1368 / 1536, ah: 554 / 1024 },
