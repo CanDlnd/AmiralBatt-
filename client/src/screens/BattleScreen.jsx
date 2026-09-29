@@ -138,6 +138,31 @@ export function BattleScreen() {
         sunk: Boolean(ship.sunk),
       }));
   }, [room.status, room.opponent?.revealed, veil, fog]);
+  const leftLine = useRef(null);
+  const rightLine = useRef(null);
+  const clockKey = room.turnClock ? `${room.turnClock.deadline}:${room.currentTurn || ''}` : '';
+  useEffect(() => {
+    const clock = room.turnClock;
+    const live = room.status === 'battle' && clock && room.currentTurn;
+    let frame = 0;
+    const paint = (scaleLeft, scaleRight) => {
+      if (leftLine.current) leftLine.current.style.transform = `scaleX(${scaleLeft})`;
+      if (rightLine.current) rightLine.current.style.transform = `scaleX(${scaleRight})`;
+    };
+    if (!live) {
+      paint(1, 1);
+      return undefined;
+    }
+    const skew = clock.now - Date.now();
+    const tick = () => {
+      const remain = clock.deadline - (Date.now() + skew);
+      const scale = Math.max(0, Math.min(1, remain / (clock.ms || 20000)));
+      paint(room.currentTurn === left?.id ? scale : 1, room.currentTurn === right?.id ? scale : 1);
+      frame = requestAnimationFrame(tick);
+    };
+    frame = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(frame);
+  }, [clockKey, room.status, room.currentTurn, left?.id, right?.id, room.turnClock]);
   const radioLine = radioMsg ? RADIO_LINES[radioMsg.key] : null;
   const radioFromLeft = radioMsg?.from === left?.id;
   const won = room.status === 'finished' && room.winnerId === room.you.id;
@@ -154,6 +179,12 @@ export function BattleScreen() {
   return (
     <section className={`battle screen ${youSitLeft ? 'seat-left' : 'seat-right'}${room.status === 'finished' ? ' is-finished' : ''}${won ? ' is-won' : ''}${lost ? ' is-lost' : ''}`}>
       <header className={`scorebar${leftTurn ? ' hot-left' : ''}${rightTurn ? ' hot-right' : ''}`} aria-label={`Oda skoru ${left?.score ?? 0} ${right?.score ?? 0}`}>
+        <span className={`turn-clip turn-clip-left ${youSitLeft ? 'is-you' : 'is-foe'}${leftTurn ? ' is-live' : ''}`} aria-hidden="true">
+          <span ref={leftLine} className="turn-line" />
+        </span>
+        <span className={`turn-clip turn-clip-right ${youSitLeft ? 'is-foe' : 'is-you'}${rightTurn ? ' is-live' : ''}`} aria-hidden="true">
+          <span ref={rightLine} className="turn-line" />
+        </span>
         <div className={`side side-left ${youSitLeft ? 'is-you' : 'is-foe'} ${leftTurn ? 'hot' : ''}`}>
           <div className="side-face">
             {radioLine && radioFromLeft ? (

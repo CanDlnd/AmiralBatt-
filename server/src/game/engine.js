@@ -300,7 +300,24 @@ export function getShotResult(ships, priorShots, row, col, scenarioId = 'classic
   return { ok: true, result: 'hit', cells: [{ row, col }] };
 }
 
-export function fireShot(game, playerId, row, col) {
+export function pickAutoShot(game, playerId) {
+  const scenario = activeScenario(game.scenarioId, game.layout);
+  const blocked = blockedSet(scenario);
+  const defenderId = game.ids.find((id) => id !== playerId);
+  const taken = new Set(incomingShots(game, defenderId).map((shot) => `${shot.row}:${shot.col}`));
+  const open = [];
+  for (let row = 0; row < scenario.rows; row += 1) {
+    for (let col = 0; col < scenario.cols; col += 1) {
+      const key = `${row}:${col}`;
+      if (blocked.has(key) || taken.has(key)) continue;
+      open.push({ row, col });
+    }
+  }
+  if (!open.length) return null;
+  return open[Math.floor(Math.random() * open.length)];
+}
+
+export function fireShot(game, playerId, row, col, options = {}) {
   if (!game || game.phase !== 'battle') {
     return { ok: false, message: 'Şu an ateş edilemez.' };
   }
@@ -377,6 +394,10 @@ export function fireShot(game, playerId, row, col) {
     game.phase = 'finished';
     game.currentTurn = null;
   } else if (shot.result === 'miss') {
+    game.currentTurn = defenderId;
+    weather = onTurnPassed(game);
+  }
+  if (options.yieldTurn && game.phase === 'battle' && game.currentTurn === playerId) {
     game.currentTurn = defenderId;
     weather = onTurnPassed(game);
   }

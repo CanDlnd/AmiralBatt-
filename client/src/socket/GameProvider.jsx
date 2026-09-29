@@ -221,7 +221,8 @@ export function GameProvider({ children }) {
           board: byYou ? 'enemy' : 'you',
         });
         sfx.play('fog');
-        flash(byYou ? 'Sis yuttu.' : 'Atış sisin içinde.');
+        if (payload.auto) flash(byYou ? 'Süre doldu. Rastgele atış yapıldı.' : 'Rakibin süresi doldu.');
+        else flash(byYou ? 'Sis yuttu.' : 'Atış sisin içinde.');
         const pinKey = `${byYou ? 'enemy' : 'you'}:${payload.row}:${payload.col}`;
         setFogPins((current) => {
           const next = new Set(current);
@@ -247,7 +248,12 @@ export function GameProvider({ children }) {
       });
       const keepsTurn = byYou && payload.currentTurn === youId;
       sfx.play('shot');
-      if (payload.result === 'miss') {
+      if (payload.auto) {
+        if (payload.result === 'miss') sfx.play('miss');
+        else if (payload.result === 'sunk') sfx.play('sunk');
+        else sfx.play('hit');
+        flash(byYou ? 'Süre doldu. Rastgele atış yapıldı.' : 'Rakibin süresi doldu.');
+      } else if (payload.result === 'miss') {
         sfx.play('miss');
         flash(byYou ? 'Iska!' : 'Rakip ıskaladı');
       } else if (payload.result === 'sunk') {

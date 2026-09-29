@@ -11,13 +11,16 @@ import {
   createGame,
   emptyBoard,
   fireShot,
+  pickAutoShot,
   placeShips,
 } from '../game/engine.js';
 import { GameError } from '../utils/errors.js';
 
+const TURN_MS = 20000;
 const rooms = new Map();
 const socketBindings = new Map();
 const tokenIndex = new Map();
+const turnTimers = new Map();
 const dropTimers = new Map();
 
 function makeCode() {
@@ -131,6 +134,7 @@ export function publicView(room, token) {
     scenarios: listScenarios(),
     hostId: publicIdOf(room, room.hostId),
     currentTurn: room.battle ? publicIdOf(room, room.battle.currentTurn) : null,
+    turnClock: turnClockView(room),
     winnerId: room.battle ? publicIdOf(room, room.battle.winnerId) : null,
     fog: publicFog(room.battle),
     abandonedBy: publicIdOf(room, room.abandonedBy),
@@ -139,6 +143,81 @@ export function publicView(room, token) {
       ? pack(opponent, boards.enemyBoard, boards.enemyRemaining, boards.enemySunk, boards.enemyReveal, boards.enemyDecoy)
       : null,
   };
+}
+
+function clearTurnClock(room) {
+  const pending = turnTimers.get(room.code);
+  if (pending) clearTimeout(pending);
+  turnTimers.delete(room.code);
+  room.turnDeadline = 0;
+}
+
+function armTurnClock(io, room) {
+  clearTurnClock(room);
+  if (room.status !== 'battle' || room.battle?.phase !== 'battle' || !room.battle.currentTurn) return;
+  const token = room.battle.currentTurn;
+  const deadline = Date.now() + TURN_MS;
+  room.turnDeadline = deadline;
+  const timer = setTimeout(() => {
+    if (turnTimers.get(room.code) !== timer) return;
+    const live = rooms.get(room.code);
+    if (!live || live.turnDeadline !== deadline || live.status !== 'battle') return;
+    if (live.battle?.currentTurn !== token) return;
+    const cell = pickAutoShot(live.battle, token);
+    if (!cell) return;
+    publishShot(io, live, token, cell.row, cell.col, { yieldTurn: true });
+  }, TURN_MS);
+  turnTimers.set(room.code, timer);
+}
+
+function turnClockView(room) {
+  if (room.status !== 'battle' || !room.turnDeadline || !room.battle?.currentTurn) return null;
+  return { deadline: room.turnDeadline, now: Date.now(), ms: TURN_MS };
+}
+
+function publishShot(io, room, shooterToken, row, col, options = {}) {
+  const player = room.players.get(shooterToken);
+  if (!player || !room.battle) return { ok: false, message: 'Şu an ateş edilemez.' };
+  const turnBefore = room.battle.currentTurn;
+  const result = fireShot(room.battle, shooterToken, row, col, options);
+  if (!result.ok) return result;
+
+  if (room.battle.phase === 'finished') {
+    room.status = 'finished';
+    awardWinner(room);
+    clearTurnClock(room);
+  } else {
+    armTurnClock(io, room);
+  }
+
+  const payload = {
+    shooterId: player.publicId,
+    row: result.row,
+    col: result.col,
+    result: result.result,
+    cells: result.cells,
+    ...(result.panic ? { panic: true } : {}),
+    ...(options.yieldTurn ? { auto: true } : {}),
+    currentTurn: publicIdOf(room, result.currentTurn),
+    winnerId: publicIdOf(room, result.winnerId),
+  };
+
+  io.to(room.code).emit('shot_result', payload);
+  if (result.weather?.type === 'start') {
+    io.to(room.code).emit('weather:fogStart', {
+      cells: result.weather.cells.map((cell) => ({ row: cell.row, col: cell.col })),
+      turns: result.weather.turns,
+    });
+  } else if (result.weather?.type === 'clear') {
+    io.to(room.code).emit('weather:fogClear', publicFogClear(room, result.weather));
+  }
+  if (!result.gameOver && result.currentTurn !== turnBefore) {
+    io.to(room.code).emit('turn_changed', { currentTurn: payload.currentTurn });
+  } else if (result.gameOver) {
+    io.to(room.code).emit('game_over', { winnerId: payload.winnerId, round: room.round || 1 });
+  }
+  emitRoom(io, room);
+  return payload;
 }
 
 export function emitRoom(io, room) {
@@ -330,6 +409,7 @@ export function submitShips(io, socket, ships, decoy) {
 
   if (room.battle.phase === 'battle') {
     room.status = 'battle';
+    armTurnClock(io, room);
   }
   emitRoom(io, room);
   return { bothReady: result.bothReady };
@@ -342,42 +422,9 @@ export function shoot(io, socket, row, col) {
   const opponent = otherPlayer(room, player.token);
   if (!opponent?.connected) throw new GameError('Rakip bağlı değil.');
 
-  const turnBefore = room.battle.currentTurn;
-  const result = fireShot(room.battle, player.token, row, col);
+  const result = publishShot(io, room, player.token, row, col);
   if (!result.ok) throw new GameError(result.message);
-
-  if (room.battle.phase === 'finished') {
-    room.status = 'finished';
-    awardWinner(room);
-  }
-
-  const payload = {
-    shooterId: player.publicId,
-    row: result.row,
-    col: result.col,
-    result: result.result,
-    cells: result.cells,
-    ...(result.panic ? { panic: true } : {}),
-    currentTurn: publicIdOf(room, result.currentTurn),
-    winnerId: publicIdOf(room, result.winnerId),
-  };
-
-  io.to(room.code).emit('shot_result', payload);
-  if (result.weather?.type === 'start') {
-    io.to(room.code).emit('weather:fogStart', {
-      cells: result.weather.cells.map((cell) => ({ row: cell.row, col: cell.col })),
-      turns: result.weather.turns,
-    });
-  } else if (result.weather?.type === 'clear') {
-    io.to(room.code).emit('weather:fogClear', publicFogClear(room, result.weather));
-  }
-  if (!result.gameOver && result.currentTurn !== turnBefore) {
-    io.to(room.code).emit('turn_changed', { currentTurn: payload.currentTurn });
-  } else if (result.gameOver) {
-    io.to(room.code).emit('game_over', { winnerId: payload.winnerId, round: room.round || 1 });
-  }
-  emitRoom(io, room);
-  return payload;
+  return result;
 }
 
 function awardWinner(room) {
@@ -400,6 +447,7 @@ export function requestRematch(io, socket) {
     return { waiting: true };
   }
 
+  clearTurnClock(room);
   const previousSecond = room.battle.ids[1];
   const previousFirst = room.battle.ids[0];
   room.round = (room.round || 1) + 1;
@@ -446,6 +494,7 @@ export function leaveRoom(io, socket) {
     room.players.delete(player.token);
     tokenIndex.delete(player.token);
     if (room.players.size === 0) {
+      clearTurnClock(room);
       rooms.delete(room.code);
       return;
     }
@@ -467,6 +516,7 @@ export function leaveRoom(io, socket) {
 
 function abandon(io, room, token) {
   if (room.status === 'abandoned') return;
+  clearTurnClock(room);
   room.status = 'abandoned';
   room.abandonedBy = token;
   const player = room.players.get(token);
@@ -497,6 +547,7 @@ export function handleDisconnect(io, socket) {
       current.players.delete(player.token);
       tokenIndex.delete(player.token);
       if (current.players.size === 0) {
+        clearTurnClock(current);
         rooms.delete(current.code);
         return;
       }

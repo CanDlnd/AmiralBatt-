@@ -1,5 +1,5 @@
 const SHOT_SRC = '/audio/shot.mp3';
-const SHOT_GAIN = 0.045;
+const SHOT_GAIN = 0.07;
 
 let ctx = null;
 let muted = false;
@@ -36,8 +36,8 @@ function stopShot() {
   try {
     gain.gain.cancelScheduledValues(now);
     gain.gain.setValueAtTime(Math.max(gain.gain.value, 0.0001), now);
-    gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.08);
-    source.stop(now + 0.09);
+    gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.03);
+    source.stop(now + 0.04);
   } catch {
     /* Kaynak zaten bitmiş olabilir. */
   }
@@ -49,22 +49,13 @@ function playShot() {
     if (muted || !buffer) return;
     stopShot();
     const source = context.createBufferSource();
-    const lowpass = context.createBiquadFilter();
     const gain = context.createGain();
-    lowpass.type = 'lowpass';
-    lowpass.frequency.setValueAtTime(680, context.currentTime);
-    lowpass.Q.setValueAtTime(0.7, context.currentTime);
     source.buffer = buffer;
-    source.connect(lowpass);
-    lowpass.connect(gain);
+    source.connect(gain);
     gain.connect(context.destination);
     const now = context.currentTime;
-    const end = now + Math.min(buffer.duration, 0.7);
-    gain.gain.setValueAtTime(0.0001, now);
-    gain.gain.exponentialRampToValueAtTime(SHOT_GAIN, now + 0.03);
-    gain.gain.exponentialRampToValueAtTime(0.0001, end);
+    gain.gain.setValueAtTime(SHOT_GAIN, now);
     source.start(now);
-    source.stop(end);
     shotSource = source;
     shotGain = gain;
     source.onended = () => {
